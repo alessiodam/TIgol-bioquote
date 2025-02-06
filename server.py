@@ -1,4 +1,5 @@
 import eventlet
+
 eventlet.monkey_patch()
 
 import os
@@ -28,18 +29,20 @@ app.permanent_session_lifetime = timedelta(days=2)
 socketio = SocketIO(app, async_mode="threading")
 
 client = TIgolApiClient(
-    os.environ.get("TIGOL_CLIENT_ID"),
-    os.environ.get("TIGOL_CLIENT_SECRET")
+    os.environ.get("TIGOL_CLIENT_ID"), os.environ.get("TIGOL_CLIENT_SECRET")
 )
 
 USER_SESSIONS = {}
+
 
 def retrieve_session():
     session_id = request.cookies.get("session_id") or str(uuid.uuid4())
     return session_id, USER_SESSIONS.setdefault(session_id, {})
 
+
 def store_session(session_id, data):
     USER_SESSIONS[session_id] = data
+
 
 def connect_db():
     if "db" not in g:
@@ -47,10 +50,12 @@ def connect_db():
         g.db.autocommit = True
     return g.db
 
+
 @app.teardown_appcontext
 def disconnect_db(_):
     if db := g.pop("db", None):
         db.close()
+
 
 def initialize_database():
     with connect_db().cursor() as cur:
@@ -67,14 +72,22 @@ def initialize_database():
         )
     print("Database initialized.")
 
+
 @app.route("/")
 def index():
     if request.args.get("authorize") == "1":
-        return redirect(client.get_authorization_url(redirect_uri=os.environ.get("TIGOL_REDIRECT_URI"), scopes=["user:read", "user:write"]))
+        return redirect(
+            client.get_authorization_url(
+                redirect_uri=os.environ.get("TIGOL_REDIRECT_URI"),
+                scopes=["user:read", "user:write"],
+                never_expire=True,
+            )
+        )
     _, session_data = retrieve_session()
     if session_data.get("user_data"):
         return redirect(url_for("display"))
     return render_template("root.html")
+
 
 @app.route("/authorized")
 def authorized():
@@ -89,15 +102,19 @@ def authorized():
     response.set_cookie("session_id", session_id)
     return response
 
+
 @app.route("/loading")
 def loading():
     return render_template("loading.html")
+
 
 @app.route("/display")
 def display():
     _, session_data = retrieve_session()
     if not (user_data := session_data.get("user_data")):
-        return render_template("error.html", error_message="Session expired. Log in again.")
+        return render_template(
+            "error.html", error_message="Session expired. Log in again."
+        )
 
     username = user_data.get("username")
     bio = user_data.get("bio")
@@ -112,7 +129,7 @@ def display():
                     ON CONFLICT (username) DO NOTHING
                     RETURNING id
                     """,
-                    (username, bio, code)
+                    (username, bio, code),
                 )
                 if cur.fetchone() is None:
                     update_user_bio(username, code, cur)
@@ -120,6 +137,7 @@ def display():
             print("Database error:", e)
 
     return render_template("authorized.html", user_data=user_data)
+
 
 @app.route("/delete", methods=["POST"])
 def delete_user():
@@ -144,6 +162,7 @@ def delete_user():
     store_session(request.cookies.get("session_id"), session_data)
 
     return redirect(url_for("index"))
+
 
 @socketio.on("start_auth")
 def handle_start_auth():
@@ -175,6 +194,7 @@ def handle_start_auth():
     except Exception as e:
         emit("error", {"msg": f"Error: {str(e)}"})
 
+
 def get_random_quote():
     try:
         response = requests.get("https://zenquotes.io/api/random")
@@ -185,23 +205,29 @@ def get_random_quote():
         print(f"Error fetching quote: {e}")
         return "An error occurred while fetching a quote."
 
+
 def update_user_bio(username, code, cur):
     quote = get_random_quote()
     cur.execute(
         "UPDATE authorized_users SET bio = %s, last_updated = NOW() WHERE username = %s",
-        (quote, username)
+        (quote, username),
     )
     token = client.exchange_code_for_token(code=code)
-    if 'user:write' not in token.scopes:
-        print(f"[BIO_UPDATE_THREAD] Token for {username} does not have 'user:write' scope.")
+    if "user:write" not in token.scopes:
+        print(
+            f"[BIO_UPDATE_THREAD] Token for {username} does not have 'user:write' scope."
+        )
         cur.execute("DELETE FROM authorized_users WHERE username = %s", (username,))
-        print(f"[BIO_UPDATE_THREAD] Removed {username} from database due to missing write scope.")
+        print(
+            f"[BIO_UPDATE_THREAD] Removed {username} from database due to missing write scope."
+        )
         return False
     if not client.update_bio(auth=token, new_bio=quote):
         print(f"[BIO_UPDATE_THREAD] Failed to update bio for {username}.")
         return False
     print(f"[BIO_UPDATE_THREAD] Updated bio for {username}")
     return True
+
 
 def bio_changing_thread():
     """Background thread that checks the database and updates the bio if 24 hours have passed."""
@@ -213,7 +239,9 @@ def bio_changing_thread():
                 users = cur.fetchall()
                 for username, code, last_updated in users:
                     now = datetime.utcnow()
-                    if last_updated is None or (now - last_updated) >= timedelta(days=1):
+                    if last_updated is None or (now - last_updated) >= timedelta(
+                        days=1
+                    ):
                         if update_user_bio(username, code, cur):
                             conn.commit()
                         # Respect rate limits (e.g. 5 per 30s)
@@ -224,12 +252,14 @@ def bio_changing_thread():
             print("[BIO_UPDATE_THREAD] Database error:", e)
             time.sleep(60)
 
+
 def get_app() -> Flask:
     with app.app_context():
         initialize_database()
     thread = threading.Thread(target=bio_changing_thread, daemon=True)
     thread.start()
     return app
+
 
 if __name__ == "__main__":
     print("Starting TIgol-BioQuote server...")
