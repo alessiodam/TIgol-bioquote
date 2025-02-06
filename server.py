@@ -1,7 +1,7 @@
 import os
 import uuid
 import psycopg2
-from datetime import timedelta
+from datetime import timedelta, datetime
 import threading
 import time
 import dotenv
@@ -57,7 +57,8 @@ def initialize_database():
                 id SERIAL PRIMARY KEY,
                 username TEXT UNIQUE NOT NULL,
                 bio TEXT,
-                code TEXT
+                code TEXT,
+                last_updated TIMESTAMP DEFAULT NOW()
             )
             """
         )
@@ -65,10 +66,12 @@ def initialize_database():
 
 @app.route("/")
 def index():
+    if request.args.get("authorize") == "1":
+        return redirect(client.get_authorization_url(redirect_uri=os.environ.get("TIGOL_REDIRECT_URI"), scopes=["user:read", "user:write"]))
     _, session_data = retrieve_session()
     if session_data.get("user_data"):
         return redirect(url_for("display"))
-    return redirect(client.get_authorization_url(redirect_uri=os.environ.get("TIGOL_REDIRECT_URI"), scopes=["user:read", "user:write"]))
+    return render_template("root.html")
 
 @app.route("/authorized")
 def authorized():
@@ -103,14 +106,41 @@ def display():
                     """
                     INSERT INTO authorized_users (username, bio, code)
                     VALUES (%s, %s, %s)
-                    ON CONFLICT DO NOTHING
+                    ON CONFLICT (username) DO NOTHING
+                    RETURNING id
                     """,
                     (username, bio, code)
                 )
+                if cur.fetchone() is None:
+                    update_user_bio(username, code, cur)
         except psycopg2.Error as e:
             print("Database error:", e)
 
     return render_template("authorized.html", user_data=user_data)
+
+@app.route("/delete", methods=["POST"])
+def delete_user():
+    _, session_data = retrieve_session()
+    if not (user_data := session_data.get("user_data")):
+        return render_template("error.html", error_message="No user data found."), 400
+
+    username = user_data.get("username")
+    if not username:
+        return render_template("error.html", error_message="Invalid username."), 400
+
+    try:
+        with connect_db().cursor() as cur:
+            cur.execute("DELETE FROM authorized_users WHERE username = %s", (username,))
+    except psycopg2.Error as e:
+        print("Database error:", e)
+        return render_template("error.html", error_message="Database error."), 500
+
+    session_data.pop("user_data", None)
+    session_data.pop("auth_code", None)
+    session_data.pop("token", None)
+    store_session(request.cookies.get("session_id"), session_data)
+
+    return redirect(url_for("index"))
 
 @socketio.on("start_auth")
 def handle_start_auth():
@@ -152,34 +182,44 @@ def get_random_quote():
         print(f"Error fetching quote: {e}")
         return "An error occurred while fetching a quote."
 
+def update_user_bio(username, code, cur):
+    quote = get_random_quote()
+    cur.execute(
+        "UPDATE authorized_users SET bio = %s, last_updated = NOW() WHERE username = %s",
+        (quote, username)
+    )
+    token = client.exchange_code_for_token(code=code)
+    if 'user:write' not in token.scopes:
+        print(f"[BIO_UPDATE_THREAD] Token for {username} does not have 'user:write' scope.")
+        cur.execute("DELETE FROM authorized_users WHERE username = %s", (username,))
+        print(f"[BIO_UPDATE_THREAD] Removed {username} from database due to missing write scope.")
+        return False
+    if not client.update_bio(auth=token, new_bio=quote):
+        print(f"[BIO_UPDATE_THREAD] Failed to update bio for {username}.")
+        return False
+    print(f"[BIO_UPDATE_THREAD] Updated bio for {username}")
+    return True
+
 def bio_changing_thread():
-    """Background thread that sets the bios every day."""
+    """Background thread that checks the database and updates the bio if 24 hours have passed."""
     while True:
         try:
             conn = psycopg2.connect(DATABASE_URL)
             with conn.cursor() as cur:
-                cur.execute("SELECT username, code FROM authorized_users")
+                cur.execute("SELECT username, code, last_updated FROM authorized_users")
                 users = cur.fetchall()
-                for username, code in users:
-                    quote = get_random_quote()
-                    cur.execute("UPDATE authorized_users SET bio = %s WHERE username = %s", (quote, username))
-                    token = client.exchange_code_for_token(code=code)
-                    if 'user:write' not in token.scopes:
-                        print("[BIO_UPDATE_THREAD] Token for {username} does not have 'user:write' scope.")
-                        cur.execute("DELETE FROM authorized_users WHERE username = %s", (username,))
-                        print(f"[BIO_UPDATE_THREAD] Removed {username} from database due to missing write scope.")
-                        continue
-                    if not client.update_bio(auth=token, new_bio=quote):
-                        print(f"[BIO_UPDATE_THREAD] Failed to update bio for {username}.")
-                    else:
-                        print(f"[BIO_UPDATE_THREAD] Updated bio for {username}")
-                    conn.commit()  # Commit after each update
-                    time.sleep(7) # respect rate limits (5 per 30s)
+                for username, code, last_updated in users:
+                    now = datetime.utcnow()
+                    if last_updated is None or (now - last_updated) >= timedelta(days=1):
+                        if update_user_bio(username, code, cur):
+                            conn.commit()
+                        # Respect rate limits (e.g. 5 per 30s)
+                        time.sleep(7)
             conn.close()
-            time.sleep(86400)  # Sleep for 24 hours
+            time.sleep(60)
         except psycopg2.Error as e:
             print("[BIO_UPDATE_THREAD] Database error:", e)
-            time.sleep(1)
+            time.sleep(60)
 
 def get_app() -> Flask:
     with app.app_context():
