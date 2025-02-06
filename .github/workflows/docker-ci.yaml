@@ -29,7 +29,7 @@ jobs:
           context: .
           push: true
           tags: |
-            ghcr.io/alessiodam/tigol-userlist:${{ github.ref_name }}
-            ghcr.io/alessiodam/tigol-userlist:latest
+            ghcr.io/alessiodam/tigol-bioquote:${{ github.ref_name }}
+            ghcr.io/alessiodam/tigol-bioquote:latest
           build-args: |
             VERSION=${{ github.ref_name }}
