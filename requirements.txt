@@ -1,0 +1,9 @@
+flask==3.1.0
+requests==2.32.3
+python-dotenv==1.0.1
+flask-socketio==5.5.1
+greenlet==3.1.1
+gunicorn==23.0.0
+eventlet==0.39.0
+psycopg2-binary==2.9.10
+tigol>=1.0.0

@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TIgol Daily Bio Quotes</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f8f9fa;
+      color: #333;
+      margin: 0;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1000px;
+      margin: auto;
+      padding: 20px;
+    }
+
+    /* Profile Card */
+    .profile-card {
+      display: flex;
+      align-items: center;
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      margin-bottom: 20px;
+    }
+
+    .profile-details {
+      margin-left: 20px;
+      flex: 1;
+    }
+
+    .profile-details h2 {
+      margin: 0 0 10px;
+      color: #2c3e50;
+    }
+
+    .profile-details p {
+      margin: 5px 0;
+    }
+
+    /* Success Message */
+    .success-message {
+      background-color: #28a745;
+      color: white;
+      padding: 15px;
+      border-radius: 5px;
+      margin-top: 20px;
+      font-size: 18px;
+      font-weight: bold;
+      animation: fadeIn 1s ease-out;
+    }
+
+    /* Animation for Success Message */
+    @keyframes fadeIn {
+      0% {
+        opacity: 0;
+        transform: translateY(-20px);
+      }
+      100% {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    /* Responsive Design */
+    @media (max-width: 768px) {
+      .profile-card {
+        flex-direction: column;
+        text-align: center;
+      }
+
+      .profile-details {
+        margin-left: 0;
+        margin-top: 15px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+
+    <!-- Current User Profile -->
+    <div class="profile-card">
+      <img src="https://placehold.co/80x80/webp" alt="User Avatar" style="border-radius: 50%;">
+      <div class="profile-details">
+        <h2>{{ user_data.first_name }} {{ user_data.last_name }}</h2>
+        <p><strong>Username:</strong> {{ user_data.username }}</p>
+        <p><strong>Email:</strong> {{ user_data.email }}</p>
+        <p><strong>Bio:</strong> {{ user_data.bio }}</p>
+        <p><strong>Joined:</strong> {{ user_data.created_at }}</p>
+      </div>
+    </div>
+
+    <!-- Success Message -->
+    <div class="success-message">
+      Your bio will have a new quote every day!
+    </div>
+
+  </div>
+</body>
+</html>

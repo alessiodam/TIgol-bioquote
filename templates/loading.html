@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Processing Authorization...</title>
+  <script src="https://cdn.socket.io/4.8.1/socket.io.min.js" integrity="sha384-mkQ3/7FUtcGyoppY6bz/PORYoGqOl7/aSUMn2ymDOJcapfS6PHqxhRTMh1RR0Q6+" crossorigin="anonymous"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+      background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    }
+    .container {
+      background-color: white;
+      padding: 2rem;
+      border-radius: 8px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      text-align: center;
+    }
+    h1 {
+      color: #333;
+      margin-bottom: 1rem;
+    }
+    #progress {
+      font-size: 1.2rem;
+      color: #666;
+      margin-bottom: 1.5rem;
+    }
+    .spinner {
+      width: 50px;
+      height: 50px;
+      border: 5px solid #f3f3f3;
+      border-top: 5px solid #3498db;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Processing Authorization</h1>
+    <div id="progress">Initializing...</div>
+    <div class="spinner"></div>
+  </div>
+
+  <script>
+    var socket = io();
+    
+    socket.on("connect", function() {
+      console.log("Socket connected!");
+      socket.emit("start_auth");
+    });
+  
+    socket.on("progress", function(data) {
+      console.log("Progress:", data.msg);
+      document.getElementById("progress").innerText = data.msg;
+    });
+  
+    socket.on("error", function(data) {
+      console.log("Error:", data.msg);
+      document.getElementById("progress").innerText = data.msg;
+    });
+  
+    socket.on("done", function(data) {
+      console.log("Done! Redirecting to:", data.redirect);
+      document.getElementById("progress").innerText = "Processing complete!";
+      setTimeout(function() {
+        window.location.href = data.redirect;
+      }, 1000);
+    });
+  </script>
+</body>
+</html>
